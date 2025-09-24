@@ -161,7 +161,8 @@ df1 = coincidences.arrays(library="pd")
 print(df1.head)
 
 
-# Geometry alignment: Submodules: 0–70:axial (//5), transaxial (%5)
+# Geometry alignment: each block has 5 crystals axially, dividing 5 tells you which block row you’re in
+#Submodules: 0–70:axial (//5), transaxial (%5)
 df1["blk_ax_A"] = df1["submoduleID1"] // 5
 df1["blk_tr_A"] = df1["submoduleID1"] % 5
 df1["blk_ax_B"] = df1["submoduleID2"] // 5
