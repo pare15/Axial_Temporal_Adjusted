@@ -22,10 +22,10 @@ cry1  = df["crystalID1"].to_numpy(np.int64)
 cry2  = df["crystalID2"].to_numpy(np.int64)
 
 # --- Derived indices (your formulas) ---
-blk_A_ax = ((sub1 + 1) // 15).astype(np.uint64)
+blk_A_ax = ((sub1 + 1) // 14).astype(np.uint64)
 blk_A_tr = ((sub1 + 1) %  5).astype(np.uint64)
 
-blk_B_ax = ((sub2 + 1) // 15).astype(np.uint64)
+blk_B_ax = ((sub2 + 1) // 14).astype(np.uint64)
 blk_B_tr = ((sub2 + 1) %  5).astype(np.uint64)   # use sub1 instead if you really want that
 
 cry_A_ax = ((cry1 + 1) // 6).astype(np.uint64)
@@ -136,3 +136,4 @@ print(f"Wrote {words_arr.size:,} 64-bit words to {out_path} "
 duration_s  = float(evt_t.max() - evt_t.min())
 expected_ts = int(np.floor(duration_s / 0.1)) + 1  # ticks at t0, t0+0.1, ...
 print(f"Expected timestamps at 100 ms: ~{expected_ts:,}")
+
