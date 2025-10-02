@@ -37,7 +37,7 @@ cry_B_tr = ((cry2 + 1) %  7).astype(np.uint64)
 
 #explicit LUT(Table 7)
 # Builds a 22x22 LUT of pair codes for unordered, non-adjacent pairs (i >= j+2).
-# Adjacent or same-module pairs remain -1 (we'll map them to 255 sentinel).
+# Adjacent or same-module pairs remain -1 (we'll map them to 255 sentinel). Higher ID row and lower column (it is a bottom half triangle)
 def build_pair_lut_table7(n_modules=22):
     lut = -np.ones((n_modules, n_modules), dtype=np.int16)
 
