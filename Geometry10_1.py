@@ -22,17 +22,17 @@ cry1  = df["crystalID1"].to_numpy(np.int64)
 cry2  = df["crystalID2"].to_numpy(np.int64)
 
 # --- Derived indices (your formulas) ---
-blk_A_ax = ((sub1 + 1) // 5).astype(np.uint64)
-blk_A_tr = ((sub1 + 1) %  5).astype(np.uint64)
+blk_A_ax = ((sub1) // 5).astype(np.uint64)
+blk_A_tr = ((sub1) %  5).astype(np.uint64)
 
-blk_B_ax = ((sub2 + 1) // 5).astype(np.uint64)
-blk_B_tr = ((sub2 + 1) %  5).astype(np.uint64)   # use sub1 instead if you really want that
+blk_B_ax = ((sub2) // 5).astype(np.uint64)
+blk_B_tr = ((sub2) %  5).astype(np.uint64)   # use sub1 instead if you really want that
 
-cry_A_ax = ((cry1 + 1) // 7).astype(np.uint64)
-cry_A_tr = ((cry1 + 1) %  7).astype(np.uint64)
+cry_A_ax = ((cry1) // 7).astype(np.uint64)
+cry_A_tr = ((cry1) %  7).astype(np.uint64)
 
-cry_B_ax = ((cry2 + 1) // 7).astype(np.uint64)
-cry_B_tr = ((cry2 + 1) %  7).astype(np.uint64)
+cry_B_ax = ((cry2) // 7).astype(np.uint64)
+cry_B_tr = ((cry2) %  7).astype(np.uint64)
 
 # mod_pair := rsectorID (4 bits)
 mod_pair_A = (rsec1.astype(np.uint64) & np.uint64(0xF))
@@ -136,5 +136,6 @@ print(f"Wrote {words_arr.size:,} 64-bit words to {out_path} "
 duration_s  = float(evt_t.max() - evt_t.min())
 expected_ts = int(np.floor(duration_s / 0.1)) + 1  # ticks at t0, t0+0.1, ...
 print(f"Expected timestamps at 100 ms: ~{expected_ts:,}")
+
 
 
