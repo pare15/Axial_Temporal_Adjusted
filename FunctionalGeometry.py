@@ -1,4 +1,4 @@
-##########10/3/25###########
+##########1/9/26###########
 
 
 import uproot
@@ -235,6 +235,7 @@ print(f"Wrote {words_arr.size:,} 64-bit words to {out_path} "
 duration_s  = float(evt_t.max() - evt_t.min())
 expected_ts = int(np.floor(duration_s / 0.1)) + 1  # iterates at t0, t0+0.1, ...
 print(f"Expected timestamps at 100 ms: ~{expected_ts:,}")
+
 
 
 
