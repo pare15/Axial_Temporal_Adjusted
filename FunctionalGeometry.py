@@ -237,5 +237,11 @@ expected_ts = int(np.floor(duration_s / 0.1)) + 1  # iterates at t0, t0+0.1, ...
 print(f"Expected timestamps at 100 ms: ~{expected_ts:,}")
 
 
+# Extract TA/TB back out of packed_coinc (sanity check)
+TA_L_back = (packed_coinc >> np.uint64(26)) & np.uint64(0x1F)
+TA_H_back = (packed_coinc >> np.uint64(58)) & np.uint64(0x1F)
+tof10_back2 = (TA_H_back << np.uint64(5)) | TA_L_back
+print("TA/TB nonzero fraction:", float(np.mean(tof10_back2 != TOF_ZERO)))
+
 
 
