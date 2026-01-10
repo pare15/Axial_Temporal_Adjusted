@@ -62,7 +62,7 @@ def build_pair_lut_table7(n_modules=22):
 mA = rsec1.astype(np.int64)
 mB = rsec2.astype(np.int64)
 
-pair_lut  = build_pair_lut_table7(22)
+pair_lut  = build_pair_lut_table7()
 pair_code = pair_lut[mA, mB]                        # int16, -1 for adjacent/same
 
 #Map invalid/adjacent/same pairs to 0xFF (both nibbles 0xF)
@@ -72,10 +72,52 @@ pair_code = np.where(pair_code < 0, 255, pair_code).astype(np.uint16)
 mod_pair_A = (pair_code & 0xF).astype(np.uint64)          # bits [3:0]
 mod_pair_B = ((pair_code >> 4) & 0xF).astype(np.uint64)   # bits [35:32]
 
-#Time delta and TA/TB split (int-safe)
-deltaT_i = np.abs(t1 - t2).astype(np.uint64)
-TA_TB_L  = (deltaT_i & np.uint64(0x1F))
-TA_TB_H  = ((deltaT_i >> np.uint64(5)) & np.uint64(0x1F))  # left the same
+# =====================================================
+# TOF / TA-TB: convert (time1-time2) seconds -> 10-bit code -> split 5+5
+# =====================================================
+
+# Choose a TDC bin size (ps). 50 ps is a common choice.
+TDC_BIN_PS = 50.0
+
+# Choose TOF_ZERO (10-bit offset). 512 centers dt_ticks=0 at midrange (0..1023).
+TOF_ZERO = 512
+
+# 1) signed dt in ps, then quantize to integer ticks
+dt_ps = (t1 - t2) * 1e12                              # signed
+dt_ticks = np.rint(dt_ps / TDC_BIN_PS).astype(np.int64)
+
+# (Optional) emulate saturation if you want (not required for your dt ranges)
+# dt_ticks = np.clip(dt_ticks, -511, 511)
+
+# 2) map signed ticks -> unsigned 10-bit [0..1023]
+tof10 = dt_ticks + TOF_ZERO
+tof10 = np.clip(tof10, 0, 1023).astype(np.uint64)
+
+# 3) split into TA_TB_L (low 5) and TA_TB_H (high 5)
+TA_TB_L = tof10 & np.uint64(0x1F)
+TA_TB_H = (tof10 >> np.uint64(5)) & np.uint64(0x1F)
+
+# 4) VERIFY: reconstruct back to ticks and check quantization error
+tof10_back = (TA_TB_H << np.uint64(5)) | TA_TB_L
+dt_ticks_back = tof10_back.astype(np.int64) - TOF_ZERO
+dt_ps_back = dt_ticks_back.astype(np.float64) * TDC_BIN_PS
+
+# tick round-trip should be exact unless you clipped to [0..1023]
+clipped_10b = (dt_ticks + TOF_ZERO < 0) | (dt_ticks + TOF_ZERO > 1023)
+
+print("\n[TOF check]")
+print("dt_ps min/max/median:", float(dt_ps.min()), float(dt_ps.max()), float(np.median(dt_ps)))
+print("dt_ticks min/max/median:", int(dt_ticks.min()), int(dt_ticks.max()), int(np.median(dt_ticks)))
+print("fraction clipped by 10-bit bounds:", float(np.mean(clipped_10b)))
+print("fraction dt_ticks_back == dt_ticks (not clipped):",
+      float(np.mean(dt_ticks_back[~clipped_10b] == dt_ticks[~clipped_10b])) if np.any(~clipped_10b) else float("nan"))
+
+res_ps = dt_ps_back - dt_ps
+print("quantization error ps (min/max/median):",
+      float(res_ps.min()), float(res_ps.max()), float(np.median(res_ps)))
+print("abs error ps max:", float(np.max(np.abs(res_ps[~clipped_10b]))) if np.any(~clipped_10b) else float("nan"))
+
+
 
 #Energy constants
 n  = len(df)
@@ -193,5 +235,6 @@ print(f"Wrote {words_arr.size:,} 64-bit words to {out_path} "
 duration_s  = float(evt_t.max() - evt_t.min())
 expected_ts = int(np.floor(duration_s / 0.1)) + 1  # iterates at t0, t0+0.1, ...
 print(f"Expected timestamps at 100 ms: ~{expected_ts:,}")
+
 
 
