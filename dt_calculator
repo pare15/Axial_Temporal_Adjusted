@@ -1,0 +1,67 @@
+import numpy as np
+
+IN_COINC   = "/Users/2025/Documents/David/raw_files/center_3.u8"
+OUT_TICKS  = "/Users/2025/Documents/David/raw_files/center_3.i2"
+# IN_COINC   = "/Users/2025/Documents/David/raw_files/offset_3.u8"
+# OUT_TICKS  = "/Users/2025/Documents/David/raw_files/offset_3.i2"
+BYTESWAP   = False
+
+ZERO_BY = None   # "peak" or "median" or None
+
+
+def get_bits_u64(x: np.ndarray, lo: int, hi: int) -> np.ndarray:
+    """Extract bits [hi:lo] inclusive from uint64 array x."""
+    width = hi - lo + 1
+    mask = (np.uint64(1) << np.uint64(width)) - np.uint64(1)
+    return (x >> np.uint64(lo)) & mask
+
+
+def main():
+    coinc = np.fromfile(IN_COINC, dtype=np.uint64)
+    if coinc.size == 0:
+        raise RuntimeError(f"No data in {IN_COINC}")
+
+    if BYTESWAP:
+        coinc = coinc.byteswap()
+
+    # TA/TB 10-bit
+    TA_TB_L   = get_bits_u64(coinc, 26, 30)  # bits [30:26]
+    TA_TB_H   = get_bits_u64(coinc, 58, 62)  # bits [62:58]
+    TA_TB_10B = (TA_TB_H << np.uint64(5)) | TA_TB_L  # 0..1023
+
+    # Decode signed 10-bit two's complement -> [-512, +511]
+    dt = TA_TB_10B.astype(np.int32)
+    dt[dt >= 512] -= 1024
+
+    print("Read coincidences:", f"{coinc.size:,}")
+    print("dt min/max:", int(dt.min()), int(dt.max()))
+    print("fraction dt>0:", float(np.mean(dt > 0)))
+    print("fraction dt<0:", float(np.mean(dt < 0)))
+    print("median dt:", int(np.median(dt)))
+
+    # Peak in tick units
+    shifted = dt + 512
+    counts = np.bincount(shifted, minlength=1024)
+    peak_tick = int(np.argmax(counts)) - 512
+    print("Peak tick:", peak_tick)
+
+    # Optional auto-zeroing (applied before saving)
+    if ZERO_BY == "median":
+        offset = int(np.median(dt))
+    elif ZERO_BY == "peak":
+        offset = peak_tick
+    else:
+        offset = 0
+
+    dt0 = dt - offset
+    print("Applied offset:", offset)
+    print("dt0 min/max:", int(dt0.min()), int(dt0.max()))
+    print("dt0 median:", int(np.median(dt0)))
+
+    dt_ticks = dt0.astype(np.int16)
+    dt_ticks.tofile(OUT_TICKS)
+    print("Wrote dt_ticks (int16) to:", OUT_TICKS)
+
+
+if __name__ == "__main__":
+    main()
