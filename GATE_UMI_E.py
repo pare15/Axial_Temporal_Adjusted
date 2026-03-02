@@ -114,13 +114,13 @@ print("[Script 4] dt_bins median before bias removal:", bias)
 print("[Script 4] dt_bins frac==0:", float(np.mean(dt_bins == 0)), "unique:", np.unique(dt_bins).size)
 
 # -------------------------
-# Energy packing using your linear calibration
+# Energy packing using linear calibration
 # -------------------------
 # Order energies consistently with A/B ordering
 eA = np.where(swap, e2, e1).astype(np.float64)
 eB = np.where(swap, e1, e2).astype(np.float64)
 
-# If energies look like MeV (~0.511), convert to keV
+# Convert to keV
 med_e = float(np.median(np.concatenate([eA, eB])))
 if med_e < 10.0:
     eA *= 1000.0
