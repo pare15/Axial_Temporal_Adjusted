@@ -1,0 +1,261 @@
+import uproot
+import numpy as np
+import os
+#############################Integrate Coincidences with RandCoincidences#############################
+INPUT_ROOT_FILE = "/Users/2025/Documents/David/root_files/test_with_rand.root"
+OUT_PATH  = "/Users/2025/Documents/David/raw_files/hoff_E_blur_sorted.RAW"
+TREE_PROMPTS = "Coincidences"
+TREE_DELAYED = "RandCoincidences"
+cols = ["time1","time2",
+        "rsectorID1","submoduleID1","crystalID1","rsectorID2",
+        "submoduleID2","crystalID2", "energy1","energy2",
+        "eventID1", "eventID2"]
+if os.path.exists(INPUT_ROOT_FILE):
+    with uproot.open(INPUT_ROOT_FILE) as f:
+        if TREE_PROMPTS not in f:
+            raise KeyError(f"{TREE_PROMPTS} not found in input file.")
+        if TREE_DELAYED in f:
+            print("RandCoincidences read, sorting...")
+            print("Extracting sorting keys...")
+
+            t1_p = f[TREE_PROMPTS]["time1"].array(library="np")
+            t2_p = f[TREE_PROMPTS]["time2"].array(library="np")
+            t1_d = f[TREE_DELAYED]["time1"].array(library="np")
+            t2_d = f[TREE_DELAYED]["time2"].array(library="np")
+
+            evt_p = np.minimum(t1_p, t2_p)
+            evt_d = np.minimum(t1_d, t2_d)
+
+            source_id = np.concatenate([
+                np.zeros(len(evt_p), dtype=np.uint8),
+                np.ones(len(evt_d), dtype=np.uint8)
+            ])
+
+            combined_evt_t = np.concatenate([evt_p, evt_d])
+
+            print("Calculating index map...")
+            sort_indices = np.argsort(combined_evt_t, kind="mergesort")
+
+            final_source_map = source_id[sort_indices]
+
+            all_branches = cols
+
+            data_to_write = {}
+            for branch in all_branches:
+                print(f"  Sorting branch: {branch}")
+                arr_p = f[TREE_PROMPTS][branch].array(library="np")
+                arr_d = f[TREE_DELAYED][branch].array(library="np")
+                combined_arr = np.concatenate([arr_p, arr_d])
+                data_to_write[branch] = combined_arr[sort_indices]
+
+            data_to_write['is_delayed'] = final_source_map
+
+            t1 = data_to_write["time1"].astype(np.float64)
+            t2 = data_to_write["time2"].astype(np.float64)
+            rsec1 = data_to_write["rsectorID1"].astype(np.int64)
+            rsec2 = data_to_write["rsectorID2"].astype(np.int64)
+            sub1  = data_to_write["submoduleID1"].astype(np.int64)
+            sub2  = data_to_write["submoduleID2"].astype(np.int64)
+            cry1  = data_to_write["crystalID1"].astype(np.int64)
+            cry2  = data_to_write["crystalID2"].astype(np.int64)
+            e1 = data_to_write["energy1"].astype(np.float64)
+            e2 = data_to_write["energy2"].astype(np.float64)
+            id1 = data_to_write["eventID1"].astype(np.int64)
+            id2 = data_to_write["eventID2"].astype(np.int64)
+            n = t1.size
+            already_sorted_by_evt_t = True
+            print("Coincidences sorted...starting listmode to binary conversion")
+        else:
+            print("RandCoincidences not found. Proceeding with Coincidences only.")
+            arr = f[TREE_PROMPTS].arrays(cols, library="np")
+
+            t1 = arr["time1"].astype(np.float64)
+            t2 = arr["time2"].astype(np.float64)
+            rsec1 = arr["rsectorID1"].astype(np.int64)
+            rsec2 = arr["rsectorID2"].astype(np.int64)
+            sub1  = arr["submoduleID1"].astype(np.int64)
+            sub2  = arr["submoduleID2"].astype(np.int64)
+            cry1  = arr["crystalID1"].astype(np.int64)
+            cry2  = arr["crystalID2"].astype(np.int64)
+            e1 = arr["energy1"].astype(np.float64)
+            e2 = arr["energy2"].astype(np.float64)
+            id1 = arr["eventID1"].astype(np.int64)
+            id2 = arr["eventID2"].astype(np.int64)
+            n = t1.size
+            already_sorted_by_evt_t = False
+
+if not os.path.exists(INPUT_ROOT_FILE):
+    raise FileNotFoundError(f"Error: File not found: {INPUT_ROOT_FILE}")
+
+TDC_BIN_PS = 21
+FLIP_SIGN = False 
+REMOVE_BIAS = True  
+E_MIN_KEV = 430.0
+KEV_PER_CODE = 4.378378378
+E_CODE_MIN = 0
+E_CODE_MAX = 255
+
+def build_pair_lut_table7(n_modules=22):
+    lut = -np.ones((n_modules, n_modules), dtype=np.int16)
+    base = [20, 39, 57, 74, 90, 105, 119, 132, 144, 155, 165, 174, 182, 189, 195, 200, 204, 207, 209]
+    for i in range(n_modules):# row (larger module index)
+        for j in range(i):# col (smaller module index)
+            if i >= j + 2:
+                if j == 0:
+                    code = i - 1
+                else:
+                    code = base[j - 1] + (i - (j + 2))
+                lut[i, j] = lut[j, i] = code
+    return lut
+
+def pack_timestamp(year, month, day, hour, minute, second, ms):
+    w1 = np.uint64((month & 0xF) << 0)
+    w1 |= np.uint64(0) << 4
+    w1 |= np.uint64(0) << 5
+    w1 |= np.uint64((year & 0xFFF) << 7)
+    w1 |= np.uint64((day & 0x1F) << 19)
+    w2 = np.uint64(0)
+    w2 |= np.uint64((hour   & 0x1F) << 32)
+    w2 |= np.uint64(0) << 37
+    w2 |= np.uint64((minute & 0x3F) << 39)
+    w2 |= np.uint64((second & 0x3F) << 45)
+    w2 |= np.uint64((ms     & 0x3FF) << 51)
+    w2 |= np.uint64(1) << 63
+    return np.uint64(w1 | w2)
+
+
+# enforce ordering: A has smaller module id
+swap = (rsec2 < rsec1)
+
+tA = np.where(swap, t2, t1)
+tB = np.where(swap, t1, t2)
+
+mA = np.where(swap, rsec2, rsec1).astype(np.int64)
+mB = np.where(swap, rsec1, rsec2).astype(np.int64)
+
+subA = np.where(swap, sub2, sub1).astype(np.int64)
+subB = np.where(swap, sub1, sub2).astype(np.int64)
+
+cryA = np.where(swap, cry2, cry1).astype(np.int64)
+cryB = np.where(swap, cry1, cry2).astype(np.int64)
+
+blk_A_ax = (subA // 5).astype(np.uint64); blk_A_tr = (subA % 5).astype(np.uint64)
+blk_B_ax = (subB // 5).astype(np.uint64); blk_B_tr = (subB % 5).astype(np.uint64)
+cry_A_ax = (cryA // 7).astype(np.uint64); cry_A_tr = (cryA % 7).astype(np.uint64)
+cry_B_ax = (cryB // 7).astype(np.uint64); cry_B_tr = (cryB % 7).astype(np.uint64)
+
+pair_lut = build_pair_lut_table7()
+pair_code = pair_lut[mA, mB]
+pair_code = np.where(pair_code < 0, 255, pair_code).astype(np.uint16)
+mod_pair_A = (pair_code & 0xF).astype(np.uint64)
+mod_pair_B = ((pair_code >> 4) & 0xF).astype(np.uint64)
+
+
+dt_ps = (tA - tB) * 1e12
+if FLIP_SIGN:
+    dt_ps = -dt_ps
+
+dt_bins = np.rint(dt_ps / TDC_BIN_PS).astype(np.int64)
+dt_bins = np.clip(dt_bins, -512, 511)
+
+if REMOVE_BIAS:
+    bias = int(np.median(dt_bins))
+    dt_bins = np.clip(dt_bins - bias, -512, 511)
+else:
+    bias = 0
+
+tof10 = (dt_bins & 0x3FF).astype(np.uint64)
+TA_TB_L = tof10 & np.uint64(0x1F)
+TA_TB_H = (tof10 >> np.uint64(5)) & np.uint64(0x1F)
+
+print("[Script 4] dt_ps min/max:", float(dt_ps.min()), float(dt_ps.max()))
+print("[Script 4] dt_bins median before bias removal:", bias)
+print("[Script 4] dt_bins frac==0:", float(np.mean(dt_bins == 0)), "unique:", np.unique(dt_bins).size)
+
+# -------------------------
+# Energy packing using linear calibration
+# -------------------------
+# Order energies consistently with A/B ordering
+eA = np.where(swap, e2, e1).astype(np.float64)
+eB = np.where(swap, e1, e2).astype(np.float64)
+
+# If energies look like MeV (~0.511), convert to keV
+med_e = float(np.median(np.concatenate([eA, eB])))
+if med_e < 10.0:
+    eA *= 1000.0
+    eB *= 1000.0
+    units = "MeV->keV"
+else:
+    units = "keV"
+
+# Convert keV -> code
+E1 = np.rint((eA - E_MIN_KEV) / KEV_PER_CODE)
+E2 = np.rint((eB - E_MIN_KEV) / KEV_PER_CODE)
+
+# Clip into 8-bit range
+E1 = np.clip(E1, E_CODE_MIN, E_CODE_MAX).astype(np.uint64)
+E2 = np.clip(E2, E_CODE_MIN, E_CODE_MAX).astype(np.uint64)
+
+print(f"[Energy] units={units} | E_MIN={E_MIN_KEV} keV | {KEV_PER_CODE} keV/code | "
+      f"E1 min/max={int(E1.min())}/{int(E1.max())} | E2 min/max={int(E2.min())}/{int(E2.max())}")
+#prompt and delay bit (0 for false and 1 for true)
+p_d = (id1 != id2).astype(np.uint64)
+# pack
+word1 = np.zeros(n, dtype=np.uint64)
+word1 |= (mod_pair_A & 0xF) << 0
+word1 |= np.uint64(1) << 4
+word1 |= (cry_A_ax & 0x7) << 5
+word1 |= (blk_A_ax & 0xF) << 8
+word1 |= (cry_A_tr & 0x7) << 12
+word1 |= (blk_A_tr & 0x7) << 15
+word1 |= (E1 & 0xFF) << 18
+word1 |= (TA_TB_L & 0x1F) << 26
+
+w2low = np.zeros(n, dtype=np.uint64)
+w2low |= (mod_pair_B & 0xF) << 0
+# w2low |= np.uint64(0) << 4 #prompt = 0, delay = 1
+w2low |= p_d << 4
+w2low |= (cry_B_ax & 0x7) << 5
+w2low |= (blk_B_ax & 0xF) << 8
+w2low |= (cry_B_tr & 0x7) << 12
+w2low |= (blk_B_tr & 0x7) << 15
+w2low |= (E2 & 0xFF) << 18
+w2low |= (TA_TB_H & 0x1F) << 26
+w2low |= np.uint64(1) << 31
+
+packed_coinc = (w2low << 32) | word1
+
+#sorting: Both prompts and delays - just read through
+#         Just prompts - check ordering
+evt_t = np.minimum(tA, tB).astype(np.float64)
+
+if already_sorted_by_evt_t:
+    order = np.arange(n)
+else:
+    order = np.argsort(evt_t, kind="mergesort")
+t0 = float(evt_t.min())
+next_tick = t0
+elapsed_ms = 0
+YEAR, MONTH, DAY = 2025, 10, 1
+
+words = []
+for idx in order:
+    t = float(evt_t[idx])
+    while t >= next_tick:
+        H = (elapsed_ms // 3600000) % 24
+        M = (elapsed_ms // 60000) % 60
+        S = (elapsed_ms // 1000) % 60
+        MS = elapsed_ms % 1000
+        words.append(pack_timestamp(YEAR, MONTH, DAY, H, M, S, MS))
+        elapsed_ms += 100
+        next_tick = t0 + elapsed_ms / 1000.0
+    words.append(np.uint64(packed_coinc[idx]))
+
+words_arr = np.array(words, dtype=np.uint64)
+with open(OUT_PATH, "wb") as f:
+    f.write(words_arr.astype("<u8").tobytes())
+
+rawdata_tag_set = (words_arr & np.uint64(0x10)) != 0
+n_coinc = int(np.count_nonzero(rawdata_tag_set))
+n_ts = int(words_arr.size - n_coinc)
+print(f"[Script 4] Wrote {words_arr.size:,} words -> {OUT_PATH} ({n_ts:,} TS, {n_coinc:,} coinc)")
